@@ -28,9 +28,12 @@
         
         button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin: 10px; border: none; border-radius: 5px; background-color: #3498db; color: white; transition: 0.2s; }
         button:hover { background-color: #2980b9; }
+        .export-btn { background-color: #27ae60; }
+        .export-btn:hover { background-color: #219653; }
         input { padding: 12px; font-size: 16px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; width: 250px; }
         #chart-container { width: 80%; max-width: 700px; margin-top: 20px; }
         .stats { font-size: 1.2rem; font-weight: bold; margin: 10px 0; color: #2c3e50; }
+        .admin-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; }
     </style>
 </head>
 <body>
@@ -40,6 +43,11 @@
         <p>Enter your Participant ID to begin. A random ID will be generated if left blank.</p>
         <input type="text" id="participant-id" placeholder="Participant ID">
         <button id="start-btn">Start Task</button>
+
+        <div class="admin-section">
+            <button id="export-btn-start" class="export-btn">Download All Data (CSV)</button>
+            <p style="font-size: 0.9em; color: #7f8c8d;">Admin: Click to export the database without running the task</p>
+        </div>
     </div>
 
     <div id="task-screen" class="screen">
@@ -54,8 +62,8 @@
             <canvas id="rtChart"></canvas>
         </div>
 
-        <div>
-            <button id="export-btn" style="background-color: #27ae60;">Download All Data (CSV)</button>
+        <div class="admin-section">
+            <button id="export-btn-end" class="export-btn">Download All Data (CSV)</button>
             <p style="font-size: 0.9em; color: #7f8c8d;">Instructor verification: Click to export the database</p>
         </div>
     </div>
@@ -93,7 +101,8 @@
         const resultsScreen = document.getElementById('results-screen');
         const targetCircle = document.getElementById('target-circle');
         const startBtn = document.getElementById('start-btn');
-        const exportBtn = document.getElementById('export-btn');
+        const exportBtnStart = document.getElementById('export-btn-start');
+        const exportBtnEnd = document.getElementById('export-btn-end');
 
         // --- TASK LOGIC ---
         startBtn.addEventListener('click', () => {
@@ -229,7 +238,7 @@
         }
 
         // --- EXPORT DATA FUNCTIONALITY ---
-        exportBtn.addEventListener('click', async () => {
+        async function downloadCSV() {
             const querySnapshot = await getDocs(collection(db, dbCollectionName));
             let allData = [];
             
@@ -256,7 +265,11 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        });
+        }
+
+        // Attach the download function to both buttons
+        exportBtnStart.addEventListener('click', downloadCSV);
+        exportBtnEnd.addEventListener('click', downloadCSV);
     </script>
 </body>
 </html>
