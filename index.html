@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction Time Task</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; overflow: hidden; background-color: #f4f4f9; }
+        .screen { display: none; height: 100vh; width: 100vw; flex-direction: column; justify-content: center; align-items: center; }
+        .active { display: flex; }
+        #task-screen { position: relative; }
+        
+        /* The exact 50px radius (100px width/height) circle requested */
+        #target-circle { 
+            position: absolute; 
+            width: 100px; 
+            height: 100px; 
+            background-color: #e74c3c; 
+            border-radius: 50%; 
+            display: none; 
+            cursor: pointer;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
+        }
+        
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin: 10px; border: none; border-radius: 5px; background-color: #3498db; color: white; transition: 0.2s; }
+        button:hover { background-color: #2980b9; }
+        input { padding: 12px; font-size: 16px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; width: 250px; }
+        #chart-container { width: 80%; max-width: 700px; margin-top: 20px; }
+        .stats { font-size: 1.2rem; font-weight: bold; margin: 10px 0; color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <div id="welcome-screen" class="screen active">
+        <h1>Reaction Time Experiment</h1>
+        <p>Enter your Participant ID to begin. A random ID will be generated if left blank.</p>
+        <input type="text" id="participant-id" placeholder="Participant ID">
+        <button id="start-btn">Start Task</button>
+    </div>
+
+    <div id="task-screen" class="screen">
+        <div id="target-circle"></div>
+    </div>
+
+    <div id="results-screen" class="screen">
+        <h1>Experiment Complete!</h1>
+        <p class="stats" id="user-average-text">Calculating your results...</p>
+        
+        <div id="chart-container">
+            <canvas id="rtChart"></canvas>
+        </div>
+
+        <div>
+            <button id="export-btn" style="background-color: #27ae60;">Download All Data (CSV)</button>
+            <p style="font-size: 0.9em; color: #7f8c8d;">Instructor verification: Click to export the database</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import Firebase SDKs directly from the CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+        // Your specific Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAjCHOl_1Wqdj5mTjuHpleEGX4Mqh5sNaQ",
+            authDomain: "psych-505-reaction-time-expt.firebaseapp.com",
+            projectId: "psych-505-reaction-time-expt",
+            storageBucket: "psych-505-reaction-time-expt.firebasestorage.app",
+            messagingSenderId: "166237107513",
+            appId: "1:166237107513:web:c23e7853f5fa84743164e8"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const dbCollectionName = "rt_data";
+
+        // Experiment Variables
+        let participantId = "";
+        let trialNumber = 0;
+        const maxTrials = 10;
+        let trialStartTime = 0;
+        let userRTs = [];
+        
+        // DOM Elements
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const taskScreen = document.getElementById('task-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        const targetCircle = document.getElementById('target-circle');
+        const startBtn = document.getElementById('start-btn');
+        const exportBtn = document.getElementById('export-btn');
+
+        // --- TASK LOGIC ---
+        startBtn.addEventListener('click', () => {
+            const inputId = document.getElementById('participant-id').value.trim();
+            // Assign random alphanumeric ID if blank
+            participantId = inputId !== "" ? inputId : 'P-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            welcomeScreen.classList.remove('active');
+            taskScreen.classList.add('active');
+            
+            setTimeout(showCircle, 1000); // 1 second buffer before the first trial
+        });
+
+        function showCircle() {
+            if (trialNumber >= maxTrials) {
+                endExperiment();
+                return;
+            }
+
+            trialNumber++;
+            
+            // Random location logic, keeping the circle fully inside the window
+            const maxX = window.innerWidth - 100;
+            const maxY = window.innerHeight - 100;
+            const randomX = Math.floor(Math.random() * maxX);
+            const randomY = Math.floor(Math.random() * maxY);
+
+            targetCircle.style.left = `${randomX}px`;
+            targetCircle.style.top = `${randomY}px`;
+            targetCircle.style.display = "block";
+            
+            trialStartTime = performance.now();
+        }
+
+        targetCircle.addEventListener('click', () => {
+            const reactionTime = Math.round(performance.now() - trialStartTime);
+            targetCircle.style.display = "none"; // Disappear on click
+            
+            // Record exact data point required by rubric
+            userRTs.push({
+                Participant_ID: participantId,
+                Trial_Number: trialNumber,
+                Reaction_Time: reactionTime,
+                Timestamp: new Date().toISOString()
+            });
+
+            // Reappear after 500ms delay
+            setTimeout(showCircle, 500); 
+        });
+
+        // --- DATA SUBMISSION & VISUALIZATION ---
+        async function endExperiment() {
+            taskScreen.classList.remove('active');
+            resultsScreen.classList.add('active');
+
+            // 1. Send current user's 10 trials to Firebase
+            try {
+                const promises = userRTs.map(trial => addDoc(collection(db, dbCollectionName), trial));
+                await Promise.all(promises);
+            } catch (e) {
+                console.error("Error adding document: ", e);
+            }
+
+            // Calculate current user's average RT
+            const totalRT = userRTs.reduce((sum, trial) => sum + trial.Reaction_Time, 0);
+            const avgRT = Math.round(totalRT / maxTrials);
+            document.getElementById('user-average-text').innerText = `Your Average Reaction Time: ${avgRT} ms`;
+
+            // 2. GET all historical data back for the Histogram
+            renderChart(avgRT);
+        }
+
+        async function renderChart(userAvgRT) {
+            const querySnapshot = await getDocs(collection(db, dbCollectionName));
+            const allHistoricalRTs = [];
+            
+            querySnapshot.forEach((doc) => {
+                allHistoricalRTs.push(doc.data().Reaction_Time);
+            });
+            
+            // Set up Histogram bins
+            const bins = { "0-200": 0, "200-400": 0, "400-600": 0, "600-800": 0, "800-1000": 0, "1000+": 0 };
+            allHistoricalRTs.forEach(rt => {
+                if (rt < 200) bins["0-200"]++;
+                else if (rt < 400) bins["200-400"]++;
+                else if (rt < 600) bins["400-600"]++;
+                else if (rt < 800) bins["600-800"]++;
+                else if (rt < 1000) bins["800-1000"]++;
+                else bins["1000+"]++;
+            });
+
+            // Map user RT to bin index for the vertical line
+            let userBinIndex = 0;
+            if (userAvgRT < 200) userBinIndex = 0;
+            else if (userAvgRT < 400) userBinIndex = 1;
+            else if (userAvgRT < 600) userBinIndex = 2;
+            else if (userAvgRT < 800) userBinIndex = 3;
+            else if (userAvgRT < 1000) userBinIndex = 4;
+            else userBinIndex = 5;
+
+            // Render Chart.js
+            const ctx = document.getElementById('rtChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(bins),
+                    datasets: [{
+                        label: 'Distribution of All Reaction Times (ms)',
+                        data: Object.values(bins),
+                        backgroundColor: '#3498db',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        annotation: {
+                            annotations: {
+                                line1: {
+                                    type: 'line',
+                                    xMin: userBinIndex,
+                                    xMax: userBinIndex,
+                                    borderColor: '#e74c3c',
+                                    borderWidth: 4,
+                                    label: { content: 'Your Avg', enabled: true, position: 'top', backgroundColor: '#e74c3c' }
+                                }
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Trials' } }, x: { title: { display: true, text: 'Reaction Time (ms)' } } }
+                }
+            });
+        }
+
+        // --- EXPORT DATA FUNCTIONALITY ---
+        exportBtn.addEventListener('click', async () => {
+            const querySnapshot = await getDocs(collection(db, dbCollectionName));
+            let csvContent = "data:text/csv;charset=utf-8,Timestamp,Participant_ID,Trial_Number,Reaction_Time\n";
+            
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                csvContent += `${data.Timestamp},${data.Participant_ID},${data.Trial_Number},${data.Reaction_Time}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "reaction_time_data.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
