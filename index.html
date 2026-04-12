@@ -270,6 +270,14 @@
         // Attach the download function to both buttons
         exportBtnStart.addEventListener('click', downloadCSV);
         exportBtnEnd.addEventListener('click', downloadCSV);
+        // --- AUTO-DOWNLOAD MAGIC LINK ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            // If the URL has ?export=true, trigger the download instantly
+            if (urlParams.get('export') === 'true') {
+                downloadCSV();
+            }
+        });
     </script>
 </body>
 </html>
